@@ -18,6 +18,9 @@ Environment variables:
                           ("sse" is legacy — HTTP+SSE was deprecated by MCP spec 2026-07-28)
     FASTMCP_HOST=0.0.0.0 HTTP host (default: 127.0.0.1)
     FASTMCP_PORT=8000     HTTP port (default: 5000)
+    MCP_AUTH_TOKEN        REQUIRED for any HTTP transport (>=16 chars). Clients send
+                          "Authorization: Bearer <token>"; the server refuses to
+                          start over HTTP without it. Not used by stdio.
 """
 import os
 import sys
@@ -41,6 +44,14 @@ import coach.tools.interactive_tools
 # Import prompt templates and resources
 import coach.prompts
 import coach.resources
+import coach.http_auth as http_auth
+
+
+@mcp.custom_route(http_auth.HEALTH_PATH, methods=["GET"])
+async def health(request):
+    """Unauthenticated liveness probe (static body, no data) for container healthchecks."""
+    from starlette.responses import JSONResponse
+    return JSONResponse({"status": "ok"})
 
 
 def _enable_code_mode():
@@ -82,7 +93,16 @@ def main() -> None:
         _enable_code_mode()
 
     transport = os.environ.get("COACH_TRANSPORT", "stdio").strip().lower()
-    mcp.run(transport=transport)
+    if not http_auth.is_http_transport(transport):
+        mcp.run(transport=transport)  # stdio: unchanged
+        return
+
+    try:
+        token = http_auth.require_token()
+    except http_auth.AuthConfigError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(2)
+    mcp.run(transport=transport, middleware=http_auth.build_middleware(token))
 
 
 if __name__ == "__main__":

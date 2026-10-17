@@ -209,8 +209,10 @@ class TestEntryPoints:
         seen = {}
         monkeypatch.setattr(srv, 'check_setup', lambda: True)
         monkeypatch.setattr(
-            srv.mcp, 'run', lambda transport: seen.setdefault('t', transport))
+            srv.mcp, 'run',
+            lambda transport, **kw: seen.setdefault('t', transport))
         monkeypatch.setenv('COACH_TRANSPORT', ' HTTP ')
+        monkeypatch.setenv('MCP_AUTH_TOKEN', 'x' * 32)  # HTTP is fail-closed
         monkeypatch.delenv('COACH_CODE_MODE', raising=False)
 
         srv.main()
